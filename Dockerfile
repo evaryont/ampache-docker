@@ -1,46 +1,44 @@
-FROM ubuntu:18.04
-LABEL maintainer="lachlan-00"
+FROM php:7.4-apache
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV MYSQL_PASS **Random**
+ARG AMPACHE_VERSION="4.1.0"
 
-ADD create_mysql_admin_user.sh run.sh /
-ADD 001-ampache.conf /etc/apache2/sites-available/
-COPY ampache.cfg.* /var/temp/
+RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
-RUN     chmod 0755 /*.sh \
-    &&  chmod +x /*.sh \
-    &&  apt-get -q -q update \
-    &&  apt-get -q -q -y install --no-install-recommends wget gnupg ca-certificates \
-    &&  echo 'deb http://download.videolan.org/pub/debian/stable/ /' >> /etc/apt/sources.list.d/videolan.list \
-    &&  wget -qO - https://download.videolan.org/pub/debian/videolan-apt.asc | apt-key add - \
-    &&  apt-get -q -q update \
-    &&  apt-get -q -q -y upgrade --no-install-recommends \
-    &&  apt-get -q -q -y install --no-install-recommends \
-          inotify-tools mysql-server apache2 php php-json \
-          php-curl php-mysql php-gd php-xml composer libev-libevent-dev \
-          pwgen lame libvorbis-dev vorbis-tools flac \
-          libmp3lame-dev libfaac-dev libtheora-dev libvpx-dev \
-          libavcodec-extra ffmpeg git cron \
-    &&  mkdir -p /var/run/mysqld \
-    &&  chown -R mysql /var/run/mysqld \
-    &&  rm -rf /var/lib/mysql/* /var/www/* /etc/apache2/sites-enabled/* \
-    &&  wget -qO - https://github.com/ampache/ampache/archive/master.tar.gz \
-          | tar -C /var/www -xzf - ampache-master --strip=1 \
-    &&  mv /var/www/rest/.htac* /var/www/rest/.htaccess \
-    &&  mv /var/www/play/.htac* /var/www/play/.htaccess \
-    &&  mv /var/www/channel/.htac* /var/www/channel/.htaccess \
-    &&  chown -R www-data:www-data /var/www \
-    &&  chmod -R 775 /var/www \
-    &&  su -s /bin/sh -c 'cd /var/www && composer install --prefer-source --no-interaction' www-data \
-    &&  apt-get purge -q -q -y --autoremove git wget ca-certificates gnupg composer \
-    &&  ln -s /etc/apache2/sites-available/001-ampache.conf /etc/apache2/sites-enabled/ \
-    &&  a2enmod rewrite \
-    &&  rm -rf /var/cache/* /tmp/* /var/tmp/* /root/.cache /var/www/.composer \
-    &&  find /var/www -type d -name '.git' -print0 | xargs -0 -L1 -- rm -rf \
-    &&  echo '30 7 * * *   /usr/bin/php /var/www/bin/catalog_update.inc' | crontab -u www-data -
+RUN apt-get update -qq && apt-get install -qq --no-install-recommends \
+        libfreetype6-dev \
+        libjpeg62-turbo-dev \
+        libpng-dev \
+	libzip-dev \
+        libldap2-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-configure ldap --with-libdir="lib/$debMultiarch"\
+    && docker-php-ext-install -j$(nproc) gd ldap mysqli pdo_mysql opcache \
+    && pecl install APCu-5.1.18 \
+    && docker-php-ext-enable apcu
 
-VOLUME ["/etc/mysql", "/var/lib/mysql", "/media", "/var/www/config", "/var/www/themes"]
-EXPOSE 80
 
-CMD ["/run.sh"]
+ENV APACHE_PORT 8080
+RUN sed -ri -e 's!80!${APACHE_PORT}!g' /etc/apache2/sites-available/*.conf \
+ && sed -ri -e 's!80!${APACHE_PORT}!g' /etc/apache2/apache2.conf /etc/apache2/ports.conf /etc/apache2/conf-available/*.conf
+
+
+RUN apt-get install -qq --no-install-recommends wget less unzip ffmpeg
+
+ADD php-max-upload.ini $PHP_INI_DIR/conf.d/
+ADD run.sh /usr/local/bin/ampache-run.sh
+
+RUN chmod a+x /usr/local/bin/ampache-run.sh
+
+USER www-data
+RUN wget -qO /tmp/ampache.zip https://github.com/ampache/ampache/releases/download/${AMPACHE_VERSION}/ampache-${AMPACHE_VERSION}_all.zip \
+ && unzip -q /tmp/ampache.zip -d /var/www/html \
+ && cp /var/www/html/config/ampache.cfg.php.dist /tmp \
+ && cp /var/www/html/config/registration_agreement.php.dist /tmp \
+ && mv /var/www/html/rest/.htaccess.dist /var/www/html/rest/.htaccess \
+ && mv /var/www/html/play/.htaccess.dist /var/www/html/play/.htaccess \
+ && mv /var/www/html/channel/.htaccess.dist /var/www/html/channel/.htaccess \
+ && sed -ri -e 's/woff/woff2?/g' /var/www/html/lib/.htaccess /var/www/html/modules/.htaccess
+
+EXPOSE 8080
+VOLUME ["/media"]
+CMD ["/usr/local/bin/ampache-run.sh"]

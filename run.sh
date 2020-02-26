@@ -1,39 +1,33 @@
 #!/bin/bash
 
-VOLUME_HOME="/var/lib/mysql"
-
-if [[ ! -d $VOLUME_HOME/mysql ]]; then
-    echo "=> An empty or uninitialized MySQL volume is detected in $VOLUME_HOME"
-    echo "=> Installing MySQL ..."
-    mysqld --defaults-file=/etc/mysql/my.cnf --initialize-insecure
-    echo "=> Done!"
-    /create_mysql_admin_user.sh
-else
-    echo "=> Using an existing volume of MySQL"
+if [[ ! -f /var/www/html/config/ampache.cfg.php ]]; then
+    echo "=> Copying default configuration file"
+    cp /tmp/ampache.cfg.php.dist /var/www/html/config/ampache.cfg.php
+    cp /tmp/ampache.cfg.php.dist /var/www/html/config/ampache.cfg.php.dist
 fi
 
-if [[ -f /var/temp/ampache.cfg.php && ! -f /var/www/config/ampache.cfg.php ]]; then
-    mv /var/temp/ampache.cfg.php /var/www/config/ampache.cfg.php
-fi
-if [[ ! -f /var/www/config/ampache.cfg.php ]]; then
-    mv /var/temp/ampache.cfg.php.dist /var/www/config/ampache.cfg.php.dist
+if [[ ! -f /var/www/html/config/registration_agreement.php ]]; then
+    echo "=> Copying default registration agreement header"
+    cp /tmp/registration_agreement.php.dist /var/www/html/config/registration_agreement.php
+    cp /tmp/registration_agreement.php.dist /var/www/html/config/registration_agreement.php.dist
 fi
 
-
-# Start apache in the background
-service apache2 start
+# # Start apache in the background
+# service apache2 start
 
 # Start cron in the background
-cron
+echo "=> (todo) Starting cron daemon"
+# cron
 
 # Start a process to watch for changes in the library with inotify
-(
-while true; do
-    inotifywatch /media
-    php /var/www/bin/catalog_update.inc -a
-    sleep 30
-done
-) &
+echo "=> (todo) Starting inotify based catalog update"
+# (
+# while true; do
+#     inotifywatch /media
+#     php /var/www/bin/catalog_update.inc -a
+#     sleep 30
+# done
+# ) &
 
-# run this in the foreground so Docker won't exit
-exec mysqld_safe
+echo "=> Launching apache2 in the foreground"
+apache2-foreground
